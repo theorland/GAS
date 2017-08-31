@@ -1,11 +1,3 @@
-/*
-
-	EXAMPLE SHEET
-	
-	
-*/
-
-
 var moment = Moment.load();
 var SELECTED_SHEET = SpreadsheetApp.getActive().getSheetByName("MAIN");
 var ALL_DATA ;
