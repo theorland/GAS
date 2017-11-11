@@ -13,7 +13,7 @@ var HELPER = {
   CURR_YEAR : 2017,
   formatDateRaw : "YYYY-MM-DD HH:mm:ss",
   formatDateFile : "YYYY_MM_DD-HH_mm_ss",
-  formatDateStr : "DD-MMM",
+  formatDateStr : "D-MMM",
   nowRaw : function(){
     return moment().format(this.formatDateRaw);
   },
@@ -40,9 +40,9 @@ var HELPER = {
       (m_before.format()<=m_after.format()).toString());
     return m_before.format()<=m_after.format();
   },
-  isDiffPass3Month: function(m_before,m_after){
+  isDiffValid: function(m_before,m_after){
     
-    m_before = m_before.add(3,"M");
+    m_before = m_before.add(1,"M");
     DoLog.append( m_before.format(this.formatDateRaw) + "<=" + m_after.format(this.formatDateRaw) + " = " + 
       (m_before.format()<=m_after.format()).toString());
     return m_before.format()<=m_after.format();
@@ -68,7 +68,7 @@ var HELPER = {
     }
     return current;
   },
-  HEADER_MAX_ROW : 2,
+  HEADER_MAX_ROW : 3,
   duplicateHeaderSheet : function(ref_sheet,new_sheet){
     var max_col_ref = ref_sheet.getMaxColumns(),
         max_col_new = new_sheet.getMaxColumns();
@@ -120,7 +120,7 @@ var HELPER = {
       DoLog.append(m_value.format(this.formatDateRaw)+ " -->");
       m_value.year(this.CURR_YEAR);
       DoLog.append(m_value.format(this.formatDateRaw)+ "\\n");
-      if (!this.isDiffPass3Month(m_value,curr_date)){
+      if (!this.isDiffValid(m_value,curr_date)){
         pass = false;
       }else if (curr == 0 ){
         this.lastRowDate = value_date;
@@ -134,7 +134,8 @@ var HELPER = {
     return pass;
       
   },
-  isArrRowPass3Month : function (values){
+  isArrRowValidMonth : function (values){
+    
     var COL_DATE = [ 1, 2 ] ;
    
     var m_value,value_date, c_row;
@@ -159,33 +160,39 @@ var HELPER = {
       DoLog.append(m_value.format(this.formatDateRaw)+ " -->");
       m_value.year(this.CURR_YEAR);
       DoLog.append(m_value.format(this.formatDateRaw)+ "\\n");
-      if (!this.isDiffPass3Month(m_value,curr_date)){
+      if (!this.isDiffValid(m_value,curr_date)){
         pass = false;
       }else if (curr == 0 ){
         this.lastRowDate = value_date;
       }
       
     }
-    if (!pass) DoLog.show();
+    if (!pass) {
+      DoLog.show();
+      Browser.msgBox(m_value.format() +" <> " + curr_date.format())
+    }
     if (num_empty>=2){
       return false;
     }
     return pass;
   },
   isArrRowExists : function (values){
-    var COL_DATE_1 = 1, COL_DATE_2 = 2, COL_CLIENT = 5, COL_AGENT = 6;  
+    var COL_DATE_1 = 1, COL_DATE_2 = 2, COL_CLIENT = 6, COL_AGENT = 7;  
     var COL_LIST = [ COL_DATE_1, COL_DATE_2, COL_CLIENT, COL_AGENT];
     var col_no;
-    var pass = false;
+    var pass = 0;
     for (i_col in COL_LIST) {
       col_no = COL_LIST[i_col]-1;
-      result = values[col_no]
-      if (result !="") {
-        pass = true;
-        break;
+      result = values[col_no];
+      if (result!="") {
+        pass++
       }
     }
-    return pass;
+    if (pass>=3) {
+      return true;
+    }
+    Browser.msgBox(values.join(","))
+    return false;
   },
   isRowExists : function(sheet,row){
   
@@ -218,7 +225,6 @@ var HELPER = {
     var name = HELPER.SS.getName();
     var blobs = [response.getBlob().setName(name + ".xlsx")];
     blobs = Utilities.zip(blobs).setName(name+ " " + moment().format(this.formatDateFile)+".zip");
-
    
     MailApp.sendEmail(email, 
        HELPER.SS.getName()+ " Backup " + moment().format(this.formatDateRaw), 
@@ -267,8 +273,8 @@ function doTest(){
 }
 
 var DoLog =  {
-  type: 1,
-  enabled:0,
+  type: 2,
+  enabled:1,
   s_logs:"",
   append: function(new_log){
     if (this.enabled == 0 ) return 0;
@@ -278,6 +284,7 @@ var DoLog =  {
         this.s_logs += "\n";
       break;
       case 2:
+        
         Logger.log(new_log);
       break;
     }
@@ -303,13 +310,54 @@ var DoLog =  {
     Browser.msgBox(message);
   }
 };
+var TODAY_ROW;
+function gotoToday(){
+  var APP = SpreadsheetApp.getActive();  
+  var today = moment().format(HELPER.formatDateStr);
+  var sheet = APP.getSheetByName(SHEET_NAME);
+  var values  = sheet.getRange(HELPER.HEADER_MAX_ROW, 1,sheet.getLastRow(),1).setNumberFormat("@").getValues();
+  var y_active = null;
+  var sheet = APP.getSheetByName(SHEET_NAME);
+  
+  for (var i =0 , i_max = values.length;i < i_max ; i++){
+    if (values[i][0] == today){
+      
+      y_active = i + HELPER.HEADER_MAX_ROW;
+      break;
+    }
+  }
+  if (y_active!=null){
+    TODAY_ROW = y_active;
+    
+    APP.setActiveSelection(sheet.getRange(y_active,1));
+  }else {
+    today = Browser.inputBox("Please fill today (" + today + ") cannot be found");
+    for (var i =0 , i_max = values.length;i < i_max ; i++){
+      if (values[i][0] == today){
+        
+        y_active = i + HELPER.HEADER_MAX_ROW;
+        break;
+      }
+    }
+    if (y_active!=null){
+      TODAY_ROW = y_active;
+      
+      APP.setActiveSelection(sheet.getRange(y_active,1));
+    }
+  }
+  
+}
 function onOpen(){
   var ui = SpreadsheetApp.getUi();
+  
+  var APP = SpreadsheetApp.getActive();
+  
+  gotoToday();  
   
   if (Session.getActiveUser()== null) 
     return 0;
   var email =  Session.getActiveUser().getEmail(); 
-  if (email != "reservation.isindonesia@gmail.com" && 
+  if (email != "ops.icsindonesia@gmail.com" && 
       email != "gd.wirawan@gmail.com"){
     return 0;
   }
@@ -317,11 +365,12 @@ function onOpen(){
   menu.addItem('Add 50 Rows', 'addMoreRows')
       .addSeparator();
   menu.addItem('Archive Selected', 'archiveSelectedRange')
-      .addItem('Archive Past 3 Month','archive3Monthv2')
+      .addItem('Archive Past 1 Month','archive3Monthv2')
       .addSeparator();
   menu.addItem("Move Selected to Top", "moveSelectedRangeToTop")
       .addSeparator();
-  menu.addItem("Create Monthly Separator","createMonthSeparator")
+  menu.addItem("Create Monthly Separator","createMonthSeparator");
+  menu.addItem("Go To Today","gotoToday")
   // FOR TESTING
       //.addItem('test','doTest')
   // END FOR TESTING
@@ -354,9 +403,17 @@ function addMoreRows(){
    
   } 
 }
+function makeABackup(){
+  var file_active = DriveApp.getFileById(SpreadsheetApp.getActive().getId());
+  var name = file_active.getName();
+  var folder = file_active.getParents().next().getId();
+  var new_file = file_active.makeCopy(folder);
+  new_file.setName(name + " " + moment().format(HELPER.formatDateFile));
+  
+}
 function archive3Monthv2(){
   var APP = SpreadsheetApp.getActiveSpreadsheet();
-  HELPER.backupSendEmail(email_to_send);
+  makeABackup();
   var current_sheet = APP.getSheetByName(SHEET_NAME);
   var archive_sheet = HELPER.viewArchiveSheet(SHEET_NAME);
   
@@ -398,13 +455,14 @@ function archive3Monthv2(){
     max_value = range_value.length;
     curr_value = range_value[i_value+1];
     while (HELPER.isArrRowExists(curr_value) &&
-           HELPER.isArrRowPass3Month(curr_value) ){
+           HELPER.isArrRowValidMonth(curr_value) ){
       i_value++;
       if (i_value+1>=max_value) break;
       curr_value = range_value[i_value+1];
     }
+    
     Logger.log(i_value + ":" + curr_value.join(",") + " exists "+HELPER.isArrRowExists(curr_value) +
-      " pass 3 month " +   HELPER.isArrRowPass3Month(curr_value));
+      " pass 3 month " +   HELPER.isArrRowValidMonth(curr_value));
     result_num_row = i_row_start -START_ROW+1+ i_value;
     if (i_value+1<max_value){
       break;
@@ -433,8 +491,7 @@ function archive3Monthv2(){
   var range_dst = archive_sheet.getRange(ar_row,1,1,COL_NUM);
   rng_copy.copyTo(range_dst);
   
-
-  current_sheet.deleteRows(START_ROW, result_num_row-1);
+  current_sheet.deleteRows(START_ROW, result_num_row);
  
   SpreadsheetApp.flush();
 }
