@@ -1,11 +1,15 @@
 var moment = Moment.load();
 moment().zone(8);
+
 var FORMAT_DATE_TIME = "YYYY-MM-DD HH:mm:ss";
+var FORMAT_DATE = "YYYY-MM-DD";
 var FORMAT_FILE = "YYYY-MM-DD_HH_mm_ss";
+var FORMAT_HOUR = "HH";
 var EMAIL_TO_SEND = ["it@is-indonesia.com","it.ics.ind@gmail.com"];
 var MAX_LOG = 120;
 var SHEET_SUMMARY_NAME = "(SUMMARY)";
 
+EMAIL_TO_SEND = "theo@is-indonesia.com";
 function testURL(url){
   var OPTIONS = {
     validateHttpsCertificates : false,
@@ -44,10 +48,7 @@ function doTest(){
   var folder = file_active.getParents().next().getId();
   var new_file = file_active.makeCopy(folder);
   new_file.setName(name + " " + moment().format(FORMAT_FILE)); */
-  var properties = PropertiesService.getScriptProperties()
-  Logger.log(properties.getProperty("notify_start"))
-  Logger.log(properties.getProperty("notify_end"))
-  Logger.log(moment().format("HH"));
+  Browser.msgBox(summary_toHtml());
 }
 
 function summarize_health(range_values){
@@ -64,8 +65,21 @@ function summarize_health(range_values){
   return summarize;
   
 }
-
-
+var WORK_HOUR = null;
+function get_message_from_last(){
+  
+}
+function is_working_hour(){
+  var properties = PropertiesService.getScriptProperties(),
+      today_hour = moment().format("HH"),
+      NOTIFY_START = properties.getProperty("notify_start"), 
+      NOTIFY_END = properties.getProperty("notify_end");
+  
+  if (WORK_HOUR === null){
+    WORK_HOUR = NOTIFY_START<=today_hour &&  NOTIFY_END>=today_hour;
+  }
+  return WORK_HOUR;
+}
 function healthChecking(){
    var START_LOG_ROW = 4, COL_CHECK = 4, NUM_CHECK = 10,
       LAST_STATUS_ROW = 2, LAST_STATUS_COL = 1;
@@ -96,7 +110,6 @@ function healthChecking(){
      
      last_update = curr_sheet.getRange(LAST_STATUS_ROW,LAST_STATUS_COL).setNumberFormat("@").getValue();
      last_update = moment(last_update,FORMAT_DATE_TIME)
-     
      
      sum_color = "black";
      diff_time=  today.diff(last_update,"minutes");
@@ -133,72 +146,160 @@ function healthChecking(){
      
    }
   
-  
-  var properties = PropertiesService.getScriptProperties();
-  var last_message =  properties.getProperty("miss_message").trim();
-  if (ALL_URGENT.length>0 || MISS_STATUS.length>0){
-    var message = [];
-    if (ALL_URGENT.length>0) {
-      message.push("This sites has issue: " + ALL_URGENT.join(", ") + " \n\n" );
-    }
-    if (MISS_STATUS.length>0){
-      message.push("And We have missing sites " + MISS_STATUS.join(", ") + " \n\n" );
-    }
-    
-    var num_send = parseInt(properties.getProperty("send_email"));
-    num_send = parseInt(num_send) + 0 ;
-    
-   
-    var today_hour = moment().format("HH");
-     
-    if (num_send<=10 ){
-          
-      if (properties.getProperty("notify_start")<=today_hour && 
-          properties.getProperty("notify_end")>=today_hour) {
-        message.push("\n");
-        message.push("Please see url for more detail: " + APP.getUrl() );
-        message.unshift("\n");
-        
-        if (last_message!="") {
-          message.unshift(last_message);
-          message.unshift("=========================");
-          message.unshift("RECAP PASS END OF THE DAY");
-        }
-        
-        MailApp.sendEmail(EMAIL_TO_SEND, 
-                          "IT ICS : " + ALL_URGENT.length + 
-                          " CRITICAL, " + MISS_STATUS.length +
-                          " MISSING ", message.join("\n"));
-
-        properties.setProperty("miss_message","")
-        num_send++
-      }else {
-        message.unshift("======================================================");
-        message.unshift("On " + moment().format(FORMAT_DATE_TIME)+ ALL_URGENT.length + 
-                          " CRITICAL, " + MISS_STATUS.length +
-                          " MISSING ");
-        
-        last_message += "\n" + message.join("\n");
-        properties.setProperty("miss_message", last_message)
-      }
-    }
-    properties.setProperty("send_email", num_send);
-  }else if (last_message!="" && 
-            properties.getProperty("notify_start")<=today_hour && 
-            properties.getProperty("notify_end")>=today_hour) {
-   
-    message.unshift(last_message);
-    message.unshift("=========================");
-    message.unshift("RECAP PASS END OF THE DAY");
-              
-    MailApp.sendEmail(EMAIL_TO_SEND, message.join("\n"));
-
-    properties.setProperty("miss_message","");
-    num_send++
-  } else {
-    properties.setProperty("send_email", 0);
+  if (is_working_hour()) {
+    sendNotification_onNotifyHours(ALL_URGENT,MISS_STATUS);
+  }else {
+    sendNotification_onOffHours(ALL_URGENT,MISS_STATUS);
   }
+ 
 }
+
+function summary_toText(){
+	var APP = SpreadsheetApp.getActive();
+	var sum_sheet = APP.getSheetByName(SHEET_SUMMARY_NAME);
+	var sum_row = 3;
+
+	var summary_values = sum_sheet.getRange(sum_row, 1,sum_sheet.getLastRow(), 3).getValues();
+	var message = [];
+  
+	for (var index_row in summary_values){
+      var row_values = summary_values[index_row];
+      if (row_values[0]=="") continue;
+		message.push(row_values[0] + " ( " + row_values[2] + " ) = " +row_values[1]);
+	}
+    return  message.join("\n");
+}
+
+function summary_toHtml(){
+  var APP = SpreadsheetApp.getActive();
+	var sum_sheet = APP.getSheetByName(SHEET_SUMMARY_NAME);
+	var sum_row = 3;
+
+	var summary_values = sum_sheet.getRange(sum_row, 1,sum_sheet.getLastRow(), 3).getValues();
+	var message = [];
+    
+  
+	for (var index_row in summary_values){
+      var row_values =  summary_values[index_row]; 
+      if (row_values[0]=="") continue;
+      var row_msg = "";
+      for (var idx_col in row_values) {
+         row_msg += "<td>" + row_values[idx_col] + "</td>"
+      }
+      message.push(row_msg);
+	}
+    return  "<table><tbody><tr>" + message.join("</tr><tr>") + "</tr></tbody></table>" ;
+}
+function prepare_lastMessage(msg){
+  msg = msg.replace(/[n]/g,"\n").replace(/[hr]/g,"=========================");
+  return msg;
+}
+function sendNotification_onNotifyHours(ALL_URGENT,MISS_STATUS){
+	var APP = SpreadsheetApp.getActive();
+	var properties = PropertiesService.getScriptProperties();
+	var last_message =  properties.getProperty("miss_message");
+	var today_hour = moment().format("HH");
+    var message = [];
+
+	if (ALL_URGENT.length>0 || MISS_STATUS.length>0 ){
+		
+		
+		if (ALL_URGENT.length>0) {
+		  message.push("This sites has issue: " + ALL_URGENT.join(", ") + " \n\n" );
+		}
+		if (MISS_STATUS.length>0){
+		  message.push("And We have missing sites " + MISS_STATUS.join(", ") + " \n\n" );
+		}
+
+		var num_send = parseInt(properties.getProperty("send_email"));
+		num_send = parseInt(num_send) + 0 ;
+
+		/*
+			JUMLAH EMAIL YANG DISEND LEBIH KURANG DARI 10
+			BARU BOLEH KIRIM EMAIL
+		*/
+		if (num_send<=10 ){
+			message.push("\n");
+			message.push("Please see url for more detail: " + APP.getUrl() );
+			message.unshift("\n");
+			
+			if (last_message!="") {
+              message.unshift("=========================");
+			  message.unshift(prepare_lastMessage(last_message));
+			  message.unshift("=========================");
+			  message.unshift("RECAP PASS END OF THE DAY");
+			}
+          
+			var subject =  "IT ICS Monitor ("  + moment().format("YYYY-MM-DD")+ ") : " +
+							  (ALL_URGENT.length>0 ?  ALL_URGENT.length +  " CRITICAL " : "")  +
+							  (ALL_URGENT.length>0 ?  MISS_STATUS.length + " MISSING "  : "");
+			MailApp.sendEmail(EMAIL_TO_SEND, 
+							 subject, 
+                             message.join("\n") + "\n\n" + summary_toText(),
+              {
+                htmlBody :  "<p>" + message.join("</p><p>").replace(/\\n/g,"<br/>").replace(/=========================/g,"<hr/>")  + "</p>" + summary_toHtml(),
+                name : "Website Monitor"
+              });
+
+			properties.setProperty("miss_message","");
+			num_send++
+		  
+		} 
+		
+		properties.setProperty("send_email", num_send);
+	}
+	/*
+	NORMAL NAMUN MASIH ADA PESAN YANG BELUM TERKIRIM
+	*/
+	else if (last_message!="") {
+        message.unshift("=========================");
+		message.unshift(prepare_lastMessage(last_message));
+		message.unshift("=========================");
+		message.unshift("RECAP PASS END OF THE DAY");
+				  
+		MailApp.sendEmail(EMAIL_TO_SEND, 
+              "IT ICS Monitor : RECAP On the past day " + moment().format(FORMAT_DATE),
+              message.join("\n") +  "\n\n" + summary_toText(),
+              {
+                htmlBody :  "<p>" + message.join("</p><p>").replace(/\\n/g,"<br/>").replace(/=========================/g,"<hr/>") + "</p>" + summary_toHtml(),
+                name : "Website Monitor"
+              });
+
+		properties.setProperty("miss_message","");
+	} else {
+		properties.setProperty("send_email", 0)
+	}
+}
+
+function sendNotification_onOffHours(ALL_URGENT,MISS_STATUS){
+    var APP = SpreadsheetApp.getActive();
+	var properties = PropertiesService.getScriptProperties();
+	var last_message =  properties.getProperty("miss_message");
+    var message = [];
+
+	if (ALL_URGENT.length>0 || MISS_STATUS.length>0){
+		
+		
+        message.push("On " + moment().format(FORMAT_DATE_TIME));
+        
+		if (ALL_URGENT.length>0) {
+		  message.push("URGENT : " + ALL_URGENT.join(", "));
+		}
+		if (MISS_STATUS.length>0){
+		  message.push("MISSING :" + MISS_STATUS.join(", ") );
+		}
+		
+		message.push("[hr][n][n]");
+		
+		last_message = "[n]" +  message.join("[n]") +  "[n]" + last_message;
+        properties.setProperty("miss_message", last_message)
+		
+	} else {
+		properties.setProperty("send_email", 0);
+	}
+
+}
+
   
 function sendEmail(email){
     
@@ -239,12 +340,17 @@ function doTesting() {
      curr_sheet.getRange(LAST_UPDATE, 1).setValue(moment().format(FORMAT_DATE_TIME));
      criteria = curr_sheet.getRange(1,2,1,3).getValues()[0]
      Logger.log(criteria.join(", "));
-     result = testURL(url);
-     result = addConclusion(result,criteria);
-     curr_sheet.insertRows(START_LOG_ROW);
-     curr_sheet.getRange(START_LOG_ROW, 1,1,result.length).setValues([result]);
-     if (curr_sheet.getMaxRows()>=MAX_LOG){
-       curr_sheet.deleteRow(MAX_LOG);
+     
+     if (is_working_hour()){
+       result = testURL(url);
+       result = addConclusion(result,criteria);
+     
+       curr_sheet.insertRows(START_LOG_ROW);
+       curr_sheet.getRange(START_LOG_ROW, 1,1,result.length).setValues([result]);
+       
+       if (curr_sheet.getMaxRows()>=MAX_LOG){
+         curr_sheet.deleteRow(MAX_LOG);
+       }
      }
    }
   healthChecking();
